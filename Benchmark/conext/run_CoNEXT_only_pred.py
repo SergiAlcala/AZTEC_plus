@@ -1,0 +1,292 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Jul 23 09:02:26 2022
+
+@author: antonio
+"""
+#!/usr/bin/python
+import sys, os, re
+import numpy as np
+import math
+import time
+import json
+import pickle
+from tqdm import tqdm
+from matplotlib import pyplot as plt
+from datetime import date
+
+
+from networkx.readwrite import json_graph
+import networkx as nx
+
+Root_Folder = '/home/sergi_alcala/sergi_data/CLEAN_AZTEC_Extension/Benchmark/conext/'
+
+
+sys.path.append(f'{Root_Folder}/dashboard')
+sys.path.append(f'{Root_Folder}/orchestrator/')
+sys.path.append(f'{Root_Folder}/optimizer/')
+sys.path.append(f'{Root_Folder}/helpers/')
+sys.path.append(f'{Root_Folder}/structures/')
+
+# import generate_topology
+from generate_topology import generate_onelink_topology
+import generate_tenants
+import orchestrator
+import tenant_predictor_only_pred
+from helpers import *
+import main
+
+def purge(dir, pattern):
+    for f in os.listdir(dir):
+        if re.search(pattern, f):
+            os.remove(os.path.join(dir, f))
+def clean():
+    print("Cleaning up...")
+    # purge("/tmp/", "enso_tenants_state.json")
+    # purge("/tmp/", "enso_tenants_dashboard.json")    
+
+def usage():
+    print("""\
+        Usage:
+run(toponame, n_tenants, penalty, type (a value per tenant), lambda (a value per tenant between 0 and 1), sigma (a value per tenant between 0 and 1)
+type 1: eMBB (LAMBDA = 50, latency = 20ms, beta = 0, R = 1)
+type 2: mMTC (LAMBDA = 10, sigma = 0, latency = 20ms, beta = 1, R = 1)
+type 3: uRLCC (LAMBDA = 25, latency = 5ms, beta = 0.25, R = 1)
+Exiting...""")
+# run()
+################################################################################
+#%%
+################################################################################
+#T_mno_list                = [5,15,30,60,120]
+print('How many minutes allocation?')
+T_mno = int(input())
+#T_mno                = 15 #[5,15,30,60,120]
+print('You have selected', T_mno, 'allocation')
+
+print('Total capacity of the network [0.8,1.5]?')
+Ctot= float(input())
+
+today_date = date.today().strftime("%Y_%m_%d")
+
+
+print(f'Running for T_mno = {T_mno}')
+T_Slice_interval_run = int(9480/T_mno) #316
+print('Do you want to use the synthetic dataset? (1 = yes, 0 = no)')
+synthetic_dataset = int(input())
+if synthetic_dataset == 1:
+
+    path_sourceNPY_t = os.path.join(f'{Root_Folder}','syn_data_noisy_108_forecast_Norm','')
+    path_sourceNPY_v = os.path.join(f'{Root_Folder}','syn_data_noisy_108_long_Norm','')
+    folder_results = f'{today_date}_{T_mno}min_2daysHist_Synthetic_Data'
+    print('You have selected the synthetic dataset')
+
+else:
+    path_sourceNPY_t = os.path.join(f'{Root_Folder}','AZTEC_DATA_PARIS','')
+    path_sourceNPY_v = os.path.join(f'{Root_Folder}','AZTEC_DATA_PARIS','')
+    folder_results = f'{today_date}_{T_mno}min_2daysHist_Real_Data_simple_'
+    print('You have selected the real dataset')
+
+
+sourceTenantDir       = os.path.join(Root_Folder, folder_results)
+
+### Directory and file creation ##############################
+
+folder_results_path = os.path.join(Root_Folder,'results', folder_results)
+ii = 0
+while os.path.isdir(folder_results_path) :
+    folder_results_path = folder_results_path[:-1] + str(ii)
+    ii += 1
+os.mkdir(os.path.join('.', folder_results_path))
+
+ResultFile            = os.path.join(Root_Folder, folder_results_path,'tenant_results.dat')
+tenant_dashboard_file = os.path.join(Root_Folder, 'structures', 'tenant_dashboard.json')
+tenants_file          = os.path.join(Root_Folder, folder_results_path,'tenant_file.json')
+topo_file             = os.path.join(Root_Folder, 'structures', 'oneLink_topo_ctot_0.8.json')
+json_dir              = os.path.join(Root_Folder, 'structures')
+file_pkl_traf         = os.path.join(Root_Folder, 'structures', 'source_traffic.pkl')
+file_pkl_x_z          = os.path.join(Root_Folder, folder_results_path, 'results.pkl')
+empty_file            = os.path.join(Root_Folder, 'structures', 'empty_file.json')
+
+#path_sourceNPY_t = os.path.join('/home/jupyter-sergi/2023_02_03 - CoNEXT benchmark - shared','Paris_forecast','')
+#path_sourceNPY_v = os.path.join('/home/jupyter-sergi/2023_02_03 - CoNEXT benchmark - shared','Paris_long','')
+#path_sourceNPY_t = os.path.join('/home/jupyter-sergi/2023_02_03 - CoNEXT benchmark - shared','syn_data_forecast','')
+#path_sourceNPY_v = os.path.join('/home/jupyter-sergi/2023_02_03 - CoNEXT benchmark - shared','syn_data_long_Norm','')
+### parameters ################################################################
+
+
+
+
+
+print('Do you want to generate the files? (1 = yes, 0 = no)')
+doFiles = int(input())
+#doFiles    = 0 # If the filesof tenants per decision interval are already in folder "structures", then Fale
+doTopology = 1 # If you want to renovate and update the topology
+
+nTenants        = 5
+monetary_factor = 1
+
+mon_samples     = 24*60*2
+T_Slice         = 1
+dur_slice       = T_Slice/T_mno
+lengthHistory   = mon_samples
+
+train_samples, val_samples = 12537, 3582 #, htest_samples  = 10080 - 480 - 120
+start_test    = 1792
+
+# train_samples, val_samples = tenant_1[:int(0.7*len(tenant_1))], tenant_1[int(0.7*len(tenant_1)): int(0.9*len(tenant_1))]
+# test_samples = tenant_1[int(0.9*len(tenant_1)):]
+
+
+
+
+idx_first     = 0
+idx_last      = idx_first + T_Slice_interval_run*T_mno 
+
+leasing_cost = 1
+
+#### if needed, generate JSON files  ###########################################
+
+if doFiles:
+    savepath=(os.path.join(Root_Folder, sourceTenantDir))
+    if not os.path.isdir(savepath):
+        os.mkdir(savepath)
+    realTraf, reqTraf = generate_tenants.createTenantFiles(path_sourceNPY_t, path_sourceNPY_v, 
+                        nTenants, lengthHistory, start_test, monetary_factor, T_Slice,
+                        T_mno, idx_last, topo_file, sourceTenantDir,synthetic_dataset)
+
+    print(f' Real Traff Len: {len(realTraf)}')
+    print(f' Req Traff Len: {len(reqTraf)}')
+
+    with open(file_pkl_traf, 'wb')  as pkl_traf:
+        pickle.dump(realTraf, pkl_traf)
+        pickle.dump(reqTraf, pkl_traf)
+    sys.exit(f'All tenants generated in folder. , Real_Traf_len: {len(realTraf)}, Req_Traf_len: {len(reqTraf)}, T_mno: {T_mno}, C_tot: {Ctot}')
+else:
+    with open(file_pkl_traf, 'rb')  as pkl_traf:
+        realTraf = pickle.load( pkl_traf)
+        reqTraf = pickle.load( pkl_traf)   
+        
+    
+if doTopology:
+    generate_onelink_topology(topo_file,capacity=Ctot)
+
+################################################################################
+#%% simulation #################################################################
+################################################################################
+
+total_epochs = int((idx_last - idx_first + 1)/T_mno)
+
+z_sol = np.zeros((total_epochs, nTenants))
+x_sol = np.zeros((total_epochs, nTenants))
+
+# total_epochs = 16
+n_epoch = 0
+forecast_list = np.zeros((total_epochs, nTenants))
+for n_epoch in tqdm(range(total_epochs)):
+# if True:
+    print("########################################################################\n",
+        f"#################################### STARTING EPOCH {n_epoch}... ####################################\n",
+        "########################################################################\n")
+    f = open(ResultFile, 'a')
+    f.write(str(n_epoch) + "\t")
+    f.close()
+    
+    if n_epoch % dur_slice == 0:
+        tenant_dashboard_file = os.path.join(sourceTenantDir,f'tenants_{int(n_epoch/dur_slice)}.json')
+        arrivalTime = True
+        if n_epoch != 0:
+            os.remove(tenants_file) 
+        tenants_inSystem = [idx for idx in range(nTenants)]
+
+    else:
+        arrivalTime = False
+        
+        
+        # 1) Retrieve data from dashboard
+    orchestrator.sync_orchestrator(topo_file, tenant_dashboard_file, tenants_file, arrivalTime)
+    
+    # 2) Make predictions
+    predictor = "holtwinters" # lstm/holtwinters
+    forecast, forecast_un=tenant_predictor_only_pred.do(predictor, topo_file, tenants_file, T_mno, mon_samples)
+    forecast_list[n_epoch,:] = forecast
+
+    
+
+    print('done')
+forecast_extend=np.repeat(forecast_list, T_mno,axis=0)
+np.save(folder_results_path+'/forecast_extend.npy',forecast_extend)
+
+print('done')
+        
+#     # 3) Find solution
+#     z_partial, x_partial = main.do(topo_file, tenants_file, leasing_cost)
+
+#     z_sol[n_epoch,tenants_inSystem] = z_partial
+#     x_sol[n_epoch,tenants_inSystem] = x_partial
+#     tenants_inSystem = [idx for idx, x in enumerate(x_sol[n_epoch,:]) if x != 0.]
+
+#     #4) Sync tenant data...
+#     # orchestrator.sync_dashboard(tenants_file, tenant_dashboard_file)
+
+#     #5) Orchestrator provides history data per tenant and BS
+#     # orchestrator.get_tenant_samples() TBD: get monitoring data from from orchestrator
+#     orchestrator.update_tenant_samples(topo_file, tenants_file, ResultFile, T_mno)
+
+#     #raw_input("Press key to continue...")
+#     #raw_input("Press key to continue...")
+
+
+# xxx = x_sol.copy()
+# zzz = z_sol.copy()
+
+
+# with open(file_pkl_x_z, 'wb')  as pkl_res:
+#     pickle.dump(xxx, pkl_res)
+#     pickle.dump(zzz, pkl_res)
+
+# with open(file_pkl_sol, 'rb')  as pkl_sol:
+#     x = pickle.load( pkl_sol)
+#     z = pickle.load( pkl_sol)   
+        
+# #%%
+# import pandas as pd
+# reserved_traff =  np.sum(x_sol*z_sol, axis = 1)
+# # res_traff_mon  =  pd.Series(np.kron(reserved_traff, np.ones(T_mno)))
+# res_traff_mon  =  np.kron(reserved_traff, np.ones(T_mno))
+
+# realTraf_sum   = np.sum(realTraf, axis=1)
+# reqTraf_sum    = np.sum(reqTraf, axis=1)
+
+# plt.plot(reqTraf_sum, label='Requested traff', linewidth=.8)    
+# plt.plot(res_traff_mon, label='Reserved traff', linewidth=.8)    
+# plt.plot(realTraf_sum, label='Real traff', linewidth=.8)    
+# plt.grid(), plt.legend(), plt.show()  
+
+# n_samples_M = 240
+# n_samples_m = 0
+# plt.plot(reqTraf_sum[n_samples_m:n_samples_M], label='Requested traff', linewidth=.5)    
+# plt.plot(res_traff_mon[n_samples_m:n_samples_M], label='Reserved traff', linewidth=.5)    
+# plt.plot(realTraf_sum[n_samples_m:n_samples_M], label='Real traff', linewidth=.5)    
+# plt.grid(), plt.legend(), plt.show()
+
+# #%% plt.plot()
+# for service in range(5):
+#     xx = x_sol[:,service]    
+#     zz = z_sol[:,service]
+
+#     resTraff_ser = np.kron(xx*zz, np.ones(T_mno))
+#     realTraf_ser = realTraf.iloc[:,service]
+#     reqTraf_ser  = reqTraf.iloc[:,service]
+
+#     # plt.plot(reqTraf_ser, label='Requested traff')    
+#     # plt.plot(resTraff_ser, label='Reserved traff')    
+#     # plt.plot(realTraf_ser, label='Real traff')    
+#     # plt.grid(), plt.legend(), plt.show()  
+
+#     plt.plot(reqTraf_ser[:1000], label='Requested traff')    
+#     plt.plot(resTraff_ser[:4*1000:4], label='Reserved traff')    
+#     plt.plot(realTraf_ser[:1000], label='Real traff')    
+#     plt.grid(), plt.legend(), plt.show()
+        
+
+# #     plt.plot()

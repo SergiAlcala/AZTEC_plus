@@ -1,0 +1,51 @@
+{
+    "BaseStations": [
+        {
+            "capacity": 1.1,
+            "idx": 1
+        }
+    ],
+    "DCs": [
+        {
+            "capacity": 1.1,
+            "idx": 2,
+            "lowdelay": 0
+        }
+    ],
+    "Network": {
+        "directed": false,
+        "graph": {},
+        "links": [
+            {
+                "cap": 1.1,
+                "delay": 0,
+                "source": 1,
+                "target": 2
+            }
+        ],
+        "multigraph": false,
+        "nodes": [
+            {
+                "id": 1
+            },
+            {
+                "id": 2
+            }
+        ]
+    },
+    "paths": {
+        "1": {
+            "2": {
+                "latency": [
+                    0
+                ],
+                "path": [
+                    [
+                        1,
+                        2
+                    ]
+                ]
+            }
+        }
+    }
+}
