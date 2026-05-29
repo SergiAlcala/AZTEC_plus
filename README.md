@@ -4,6 +4,18 @@ Framework used in IEEE TNSM: AZTEC+: Long- and Short-Term Resource Provisioning 
 
 DOI: doi.org/10.1109/TNSM.2025.3580706
 
+## How to Cite
+
+If you use this framework, please cite the IEEE TNSM paper:
+
+```bibtex
+@article{AZTECPlus_TNSM_2025,
+	title={AZTEC+: Long- and Short-Term Resource Provisioning for Zero-Touch Network Management},
+	journal={IEEE Transactions on Network and Service Management},
+	doi={10.1109/TNSM.2025.3580706}
+}
+```
+
 Cleaned version of the AZTEC extension workspace, organized for benchmarking, framework experiments, and plotting utilities.
 
 ## Contents
