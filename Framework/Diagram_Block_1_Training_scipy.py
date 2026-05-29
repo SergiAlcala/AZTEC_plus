@@ -246,11 +246,19 @@ def montecarlo_stuff(static_val,ppf_val=0.7):
 def Training_Block(DELAY):
     
     ## Load Data
-
-    bordeaux = pd.read_csv(f'/home/sergi_alcala/sergi_data/AZTEC_extension/citys/{city}.csv')
-    bordeaux.drop('date_time', axis=1, inplace=True)
-    bordeaux = bordeaux.reindex(sorted(bordeaux.columns), axis=1)
-    bordeaux = bordeaux.to_numpy()
+    # If a NumPy dataset path was provided via the config, load it. Otherwise, fall back to CSV city files.
+    if 'DATASET_NPY' in globals() and DATASET_NPY is not None:
+        print(f'Loading dataset from {DATASET_NPY}')
+        bordeaux = np.load(DATASET_NPY)
+        # Ensure 2D: (time, num_services)
+        if bordeaux.ndim == 1:
+            bordeaux = bordeaux.reshape(-1, 1)
+    else:
+        bordeaux = pd.read_csv(f'/home/sergi_alcala/sergi_data/AZTEC_extension/citys/{city}.csv')
+        if 'date_time' in bordeaux.columns:
+            bordeaux.drop('date_time', axis=1, inplace=True)
+        bordeaux = bordeaux.reindex(sorted(bordeaux.columns), axis=1)
+        bordeaux = bordeaux.to_numpy()
 
     xTrain_size=round(len(bordeaux)*0.7) ### maybe 0.8
     xVal_size=round(len(bordeaux)*0.1)
@@ -381,6 +389,9 @@ def Diagram_Block_1_Training_scipy(config,TB_Fpath,save=True):
     TBPATH=TB_Fpath
 
     ETA = config['ETA']
+    # Optional override: allow running on a provided NumPy dataset
+    global DATASET_NPY
+    DATASET_NPY = config.get('dataset_npy', None)
 
     window_min=2 # starting lower bound
     # window_max=120 # starting upper bound (previously 120)
