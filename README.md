@@ -1,5 +1,9 @@
 # AZTEC+
 
+Framework used in IEEE TNSM: AZTEC+: Long- and Short-Term Resource Provisioning for Zero-Touch Network Management.
+
+DOI: doi.org/10.1109/TNSM.2025.3580706
+
 Cleaned version of the AZTEC extension workspace, organized for benchmarking, framework experiments, and plotting utilities.
 
 ## Contents
